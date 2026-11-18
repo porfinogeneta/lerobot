@@ -300,6 +300,8 @@ class HILSerlProcessorConfig:
     inverse_kinematics: InverseKinematicsConfig | None = None
     reward_classifier: RewardClassifierConfig | None = None
     max_gripper_pos: float | None = 100.0
+    # gym_hil sim only: respawn the cube at a random position on every reset.
+    random_block_position: bool = False
 
 
 @EnvConfig.register_subclass(name="gym_manipulator")

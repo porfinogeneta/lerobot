@@ -14,9 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
@@ -73,7 +75,7 @@ from lerobot.teleoperators import (
 )
 from lerobot.teleoperators.teleoperator import Teleoperator
 from lerobot.teleoperators.utils import TeleopEvents
-from lerobot.utils.constants import ACTION, DONE, OBS_IMAGES, OBS_STATE, REWARD
+from lerobot.utils.constants import ACTION, DONE, HF_LEROBOT_HOME, OBS_IMAGES, OBS_STATE, REWARD
 from lerobot.utils.import_utils import require_package
 from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import log_say
@@ -326,6 +328,11 @@ def make_robot_env(cfg: HILSerlRobotEnvConfig) -> tuple[gym.Env, Any]:
             render_mode="human",
             use_gripper=use_gripper,
             gripper_penalty=gripper_penalty,
+            random_block_position=cfg.processor.random_block_position,
+            # gym_hil registers a hard 100-step TimeLimit; honor the configured episode length instead.
+            max_episode_steps=(
+                int(cfg.processor.reset.control_time_s * cfg.fps) if cfg.processor.reset is not None else 100
+            ),
         )
 
         return env, None
@@ -676,16 +683,49 @@ def control_loop(
                     "names": ["channels", "height", "width"],
                 }
 
-        # Create dataset
-        dataset = LeRobotDataset.create(
-            cfg.dataset.repo_id,
-            cfg.env.fps,
-            root=cfg.dataset.root,
-            use_videos=True,
-            image_writer_threads=4,
-            image_writer_processes=0,
-            features=features,
-        )
+        # Append to the dataset if it already exists (locally or on the Hub), otherwise create it.
+        # resume() needs an explicit writable root (same default location create() uses)
+        dataset_root = Path(cfg.dataset.root or HF_LEROBOT_HOME / cfg.dataset.repo_id)
+        try:
+            dataset = LeRobotDataset.resume(
+                cfg.dataset.repo_id,
+                root=dataset_root,
+                image_writer_threads=4,
+                image_writer_processes=0,
+            )
+        except Exception as e:
+            logging.info(f"Could not resume '{cfg.dataset.repo_id}' ({e!r}); creating a new dataset.")
+            dataset = None
+            # A failed resume() can leave an empty root dir behind, which makes create() fail
+            # with FileExistsError. rmdir only succeeds on an empty directory, so real data is safe.
+            with contextlib.suppress(OSError):
+                dataset_root.rmdir()
+
+        if dataset is not None:
+            if dataset.meta.fps != cfg.env.fps or set(dataset.meta.features) != set(features) | {
+                "timestamp",
+                "frame_index",
+                "episode_index",
+                "index",
+                "task_index",
+            }:
+                raise ValueError(
+                    f"Existing dataset '{cfg.dataset.repo_id}' (fps={dataset.meta.fps}, "
+                    f"features={sorted(dataset.meta.features)}) is incompatible with the current "
+                    f"recording (fps={cfg.env.fps}, features={sorted(features)}). "
+                    "Use a different repo_id or root."
+                )
+            logging.info(f"Resuming dataset '{cfg.dataset.repo_id}' with {dataset.meta.total_episodes} episodes")
+        else:
+            dataset = LeRobotDataset.create(
+                cfg.dataset.repo_id,
+                cfg.env.fps,
+                root=cfg.dataset.root,
+                use_videos=True,
+                image_writer_threads=4,
+                image_writer_processes=0,
+                features=features,
+            )
 
     episode_idx = 0
     episode_step = 0
