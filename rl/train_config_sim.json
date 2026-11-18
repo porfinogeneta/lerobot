@@ -10,12 +10,12 @@
     "save_checkpoint": true,
     "save_freq": 5000,
     "wandb": {
-        "enable": true,
+        "enable": false,
         "project": "panda_sim",
         "disable_artifact": true
     },
     "dataset": {
-        "repo_id": "szymmon/cube_pickup_all_same",
+        "repo_id": "szymmon/cube_pickup",
         "use_imagenet_stats": false
     },
     "algorithm": {
