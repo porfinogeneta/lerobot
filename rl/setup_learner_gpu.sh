@@ -17,7 +17,7 @@ LEARNER_BIND="${LEARNER_BIND:-127.0.0.1}"
 # 1. Dependencies
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv sync --locked --extra hilserl
+uv sync --locked --extra hilserl --extra training  # `training` provides wandb
 
 # 2. Sanity: GPU visible
 uv run python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; print('GPU:', torch.cuda.get_device_name(0))"
