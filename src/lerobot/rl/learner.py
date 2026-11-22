@@ -638,11 +638,15 @@ def save_training_checkpoint(
         if os.path.exists(dataset_offline_dir) and os.path.isdir(dataset_offline_dir):
             shutil.rmtree(dataset_offline_dir)
 
-        offline_replay_buffer.to_lerobot_dataset(
-            cfg.dataset.repo_id,
-            fps=fps,
-            root=dataset_offline_dir,
-        )
+        # The offline buffer is just a copy of the demo dataset, so a failed dump must not kill training.
+        try:
+            offline_replay_buffer.to_lerobot_dataset(
+                cfg.dataset.repo_id,
+                fps=fps,
+                root=dataset_offline_dir,
+            )
+        except Exception:
+            logging.exception("[LEARNER] Failed to dump the offline replay buffer; continuing training")
 
     logging.info("Resume training")
 
